@@ -1,0 +1,41 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+[Pp]ublish/
+artifacts/
+*.zip
+
+# Visual Studio / Rider / VS Code user files
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.userprefs
+*.rsuser
+
+# Test results and coverage
+TestResults/
+*.trx
+coverage*.xml
+*.coverage
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Never commit secrets or local settings
+.env
+*.env
+*.pfx
+*.p12
+*.snk
+appsettings.*.local.json

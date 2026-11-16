@@ -1,0 +1,14 @@
+name: Feature or template idea
+description: Suggest a new feature or a ready-made entry
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why would it help?

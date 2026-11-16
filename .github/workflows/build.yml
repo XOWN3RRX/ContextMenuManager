@@ -1,0 +1,64 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        run: dotnet build ContextMenuManager.slnx -c Release
+
+      - name: Test
+        run: dotnet test ContextMenuManager.slnx -c Release --no-build
+
+      - name: Publish
+        shell: pwsh
+        run: |
+          foreach ($rid in 'win-x64', 'win-arm64') {
+            dotnet publish src/ContextMenuManager/ContextMenuManager.csproj -c Release -r $rid --self-contained false `
+              -p:PublishSingleFile=true -p:DebugType=none -o "publish/$rid"
+            Copy-Item LICENSE, README.md "publish/$rid/"
+            Compress-Archive -Path "publish/$rid/*" -DestinationPath "ContextMenuManager-$rid.zip" -Force
+          }
+          Get-FileHash ContextMenuManager-*.zip -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ContextMenuManager
+          path: |
+            ContextMenuManager-*.zip
+            SHA256SUMS.txt
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ContextMenuManager
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" ContextMenuManager-*.zip SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --draft --generate-notes --title "Context Menu Manager $GITHUB_REF_NAME"
