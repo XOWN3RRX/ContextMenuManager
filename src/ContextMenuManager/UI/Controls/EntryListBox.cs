@@ -108,6 +108,20 @@ internal sealed class EntryListBox : ListBox
     private Rectangle ToggleBounds(Rectangle item) =>
         new(item.Right - S(56), item.Top + (item.Height - S(20)) / 2, S(40), S(20));
 
+    /// <summary>The card a row is drawn in: inset a little, and indented for items in a submenu.</summary>
+    private Rectangle CardBounds(Rectangle item, bool isChild)
+    {
+        var card = Rectangle.Inflate(item, -S(2), -S(2));
+        return isChild ? Rectangle.FromLTRB(card.Left + S(LogicalChildIndent), card.Top, card.Right, card.Bottom) : card;
+    }
+
+    /// <summary>The drag handle (a grid of dots) at the left of an entry's card.</summary>
+    private Rectangle GripBounds(Rectangle card) =>
+        new(card.Left + S(5), card.Top + (card.Height - S(16)) / 2, S(10), S(16));
+
+    private bool OverGrip(int index, Point point) =>
+        AllowReorder && Items[index] is MenuEntry entry && GripBounds(CardBounds(GetItemRectangle(index), entry.IsChild)).Contains(point);
+
     private int HitTest(Point point)
     {
         int index = IndexFromPoint(point);
@@ -124,7 +138,7 @@ internal sealed class EntryListBox : ListBox
         }
 
         bool overToggle = index >= 0 && Items[index] is MenuEntry && ToggleBounds(GetItemRectangle(index)).Contains(e.Location);
-        Cursor = overToggle ? Cursors.Hand : Cursors.Default;
+        Cursor = overToggle ? Cursors.Hand : index >= 0 && OverGrip(index, e.Location) ? Cursors.SizeAll : Cursors.Default;
         if (index != _hoverIndex || overToggle != _hoverToggle)
         {
             InvalidateRow(_hoverIndex);
@@ -472,13 +486,8 @@ internal sealed class EntryListBox : ListBox
         }
 
         bool hover = index == _hoverIndex;
-        int pad = S(2);
-        var card = Rectangle.Inflate(bounds, -pad, -pad);
         bool isChild = item is MenuEntry { IsChild: true };
-        if (isChild)
-        {
-            card = Rectangle.FromLTRB(card.Left + S(24), card.Top, card.Right, card.Bottom);
-        }
+        Rectangle card = CardBounds(bounds, isChild);
 
         g.SmoothingMode = SmoothingMode.AntiAlias;
         if (selected || hover)
@@ -502,13 +511,21 @@ internal sealed class EntryListBox : ListBox
             g.DrawLine(pen, x, middle, card.Left - S(4), middle);
         }
 
+        // Every row leaves room for the drag handle, so icons and text line up.
+        var content = Rectangle.FromLTRB(card.Left + S(12), card.Top, card.Right, card.Bottom);
+
         if (item is MenuEntry entry)
         {
             bool active = entry.Enabled && (!entry.IsChild || Items.OfType<MenuEntry>().FirstOrDefault(p => p.Id == entry.ParentId)?.Enabled != false);
             string glyph = entry.Kind == EntryKind.Submenu ? Glyphs.More : Glyphs.Play;
             string title = string.IsNullOrWhiteSpace(entry.Text) ? "(no name)" : entry.Text;
             Rectangle toggle = ToggleBounds(bounds);
-            DrawContent(g, card, entry.EffectiveIcon, glyph, title, Describe(entry), active, toggle.Left - S(10));
+            if (AllowReorder)
+            {
+                DrawGrip(g, GripBounds(card), hover || selected ? Theme.TextSecondary : Theme.TextDisabled);
+            }
+
+            DrawContent(g, content, entry.EffectiveIcon, glyph, title, Describe(entry), active, toggle.Left - S(10));
             DrawToggle(g, toggle, entry.Enabled, hover && _hoverToggle);
         }
         else if (item is ExternalItem external)
@@ -516,7 +533,7 @@ internal sealed class EntryListBox : ListBox
             string glyph = external.Kind == ExternalItemKind.ShellExtension ? Glyphs.Library
                 : external.Kind == ExternalItemKind.Submenu ? Glyphs.More : Glyphs.Play;
             int right = card.Right - S(40);
-            DrawContent(g, card, external.Icon, glyph, external.Text, Describe(external), active: true, right);
+            DrawContent(g, content, external.Icon, glyph, external.Text, Describe(external), active: true, right);
 
             _glyphFont ??= Theme.CreateGlyphFont(Font, 1.15f);
             TextRenderer.DrawText(g, Glyphs.Lock, _glyphFont, new Rectangle(right + S(8), card.Top, S(24), card.Height), Theme.TextDisabled,
@@ -631,6 +648,25 @@ internal sealed class EntryListBox : ListBox
         }
 
         return string.Join("  ·  ", parts);
+    }
+
+    /// <summary>Two columns of three dots: the usual sign that a row can be dragged.</summary>
+    private void DrawGrip(Graphics g, Rectangle bounds, Color color)
+    {
+        float dot = Math.Max(2f, S(2) + 0.5f);
+        float step = S(5);
+        float left = bounds.Left + (bounds.Width - step - dot) / 2f;
+        float top = bounds.Top + (bounds.Height - 2 * step - dot) / 2f;
+
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using var brush = new SolidBrush(color);
+        for (int column = 0; column < 2; column++)
+        {
+            for (int row = 0; row < 3; row++)
+            {
+                g.FillEllipse(brush, left + column * step, top + row * step, dot, dot);
+            }
+        }
     }
 
     private static void DrawToggle(Graphics g, Rectangle bounds, bool on, bool hover)

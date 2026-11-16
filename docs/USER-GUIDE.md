@@ -78,7 +78,7 @@ Right-click an entry in the list (or use the keyboard):
 
 ### Drag and drop
 
-Drag an entry up or down the list to change its place; a line shows where it will land, and Esc cancels. A submenu takes its items along.
+Entries that can be moved show a drag handle (⋮⋮) on the left. Drag an entry up or down the list to change its place; a line shows where it will land, and Esc cancels. A submenu takes its items along.
 
 - To put a command **into a submenu**, drop it between the submenu's items (the line is drawn indented). At the end of a submenu, move the mouse a little to the right to drop it inside, or to the left to drop it after the submenu.
 - To take an item **out of a submenu**, drop it between top-level entries. It keeps the submenu's places (desktop, folders...).
