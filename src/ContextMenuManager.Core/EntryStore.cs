@@ -100,6 +100,55 @@ public sealed class EntryStore
         return true;
     }
 
+    /// <summary>
+    /// Moves an entry (a submenu together with its items) to a new place, as used by drag and drop.
+    /// </summary>
+    /// <param name="parentId">The submenu to move into, or null for the top level.</param>
+    /// <param name="before">The sibling to put it in front of, or null for the end.</param>
+    /// <returns>False if the move isn't possible or changes nothing.</returns>
+    /// <remarks>
+    /// Only commands can go into a submenu (submenus can't be nested). An entry that moves into a
+    /// submenu takes the submenu's locations and loses the settings children can't have.
+    /// </remarks>
+    public bool MoveTo(MenuEntry entry, Guid? parentId, MenuEntry? before)
+    {
+        if (!Entries.Contains(entry) || before == entry || before is not null && (before.ParentId != parentId || !Entries.Contains(before)))
+        {
+            return false;
+        }
+
+        MenuEntry? parent = null;
+        if (parentId is { } id)
+        {
+            parent = Find(id);
+            if (parent is not { Kind: EntryKind.Submenu, IsChild: false } || entry.Kind != EntryKind.Command || parent == entry)
+            {
+                return false;
+            }
+        }
+
+        List<Guid> oldOrder = [.. Entries.Select(e => e.Id)];
+        Guid? oldParent = entry.ParentId;
+
+        List<MenuEntry> block = [entry, .. entry.IsChild ? [] : ChildrenOf(entry)];
+        Entries.RemoveAll(block.Contains);
+
+        int index = before is not null ? Entries.IndexOf(before)
+            : parent is not null ? Entries.FindLastIndex(e => e.Id == parent.Id || e.ParentId == parent.Id) + 1
+            : Entries.Count;
+        Entries.InsertRange(index, block);
+
+        entry.ParentId = parentId;
+        if (parent is not null && oldParent != parentId)
+        {
+            entry.Locations = parent.Locations;
+            entry.ShiftOnly = false;
+            entry.Position = MenuPosition.Default;
+        }
+
+        return oldParent != parentId || !oldOrder.SequenceEqual(Entries.Select(e => e.Id));
+    }
+
     public static string Serialize(IEnumerable<MenuEntry> entries) =>
         JsonSerializer.Serialize(new EntryFile { Entries = [.. entries] }, CoreJsonContext.Default.EntryFile);
 

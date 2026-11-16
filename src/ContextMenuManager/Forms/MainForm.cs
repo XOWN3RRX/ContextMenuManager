@@ -97,6 +97,7 @@ internal sealed class MainForm : Form
             }
         };
         _list.ToggleClicked += (_, entry) => ToggleEntry(entry);
+        _list.EntryDropped += (_, e) => DropEntry(e);
         _list.MouseDoubleClick += List_MouseDoubleClick;
         _list.KeyDown += List_KeyDown;
 
@@ -290,6 +291,7 @@ internal sealed class MainForm : Form
             rows.AddRange(external);
         }
 
+        _list.AllowReorder = filter.Length == 0;
         _updatingList = true;
         try
         {
@@ -593,6 +595,22 @@ internal sealed class MainForm : Form
         if (Store.Move(entry, direction))
         {
             Commit(entry);
+        }
+    }
+
+    private void DropEntry(EntryDropEventArgs e)
+    {
+        Guid? oldParent = e.Entry.ParentId;
+        if (!Store.MoveTo(e.Entry, e.ParentId, e.Before))
+        {
+            return;
+        }
+
+        if (Commit(e.Entry) && oldParent != e.ParentId)
+        {
+            UpdateStatus(e.ParentId is { } id && Store.Find(id) is { } submenu
+                ? $"“{e.Entry.Text}” moved into “{submenu.Text}”"
+                : $"“{e.Entry.Text}” moved out of its submenu");
         }
     }
 
