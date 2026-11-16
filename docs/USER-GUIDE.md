@@ -76,6 +76,16 @@ Right-click an entry in the list (or use the keyboard):
 | Search | Ctrl+F |
 | Refresh the preview (re-read other programs' items) | F5 |
 
+### Drag and drop
+
+Drag an entry up or down the list to change its place; a line shows where it will land, and Esc cancels. A submenu takes its items along.
+
+- To put a command **into a submenu**, drop it between the submenu's items (the line is drawn indented). At the end of a submenu, move the mouse a little to the right to drop it inside, or to the left to drop it after the submenu.
+- To take an item **out of a submenu**, drop it between top-level entries. It keeps the submenu's places (desktop, folders...).
+- Dragging is off while the list is filtered by a search.
+
+The list order is the order of your entries in the menu, but only among entries with the same **Position**: Windows always shows *Top of the menu* entries first and *Bottom of the menu* entries last. Other programs' items are placed by Windows and can't be reordered.
+
 ## Import and export
 
 Use **⋯ → Export entries** to save your list as a `.json` file, for a backup or to share. **⋯ → Import entries** adds entries from such a file. Before importing, the app lists what each entry runs; imported entries are added **turned off**, so you can check them before switching them on. Only import files you trust, just as you would only run programs you trust.

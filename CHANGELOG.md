@@ -4,6 +4,10 @@ All notable changes are listed here. The format is based on [Keep a Changelog](h
 
 ## [Unreleased]
 
+### Added
+
+- Reorder entries with drag and drop, including moving commands into and out of submenus.
+
 ## [1.0.0] - 2026-11-16
 
 ### Added

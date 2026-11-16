@@ -97,6 +97,50 @@ public sealed class EntryStoreTests : IDisposable
         Assert.Equal(["A", "B"], store.InDisplayOrder().Where(e => !e.IsChild && e.Kind == EntryKind.Command).Select(e => e.Text));
     }
 
+    [Fact]
+    public void MoveTo_reorders_and_takes_submenu_items_along()
+    {
+        var store = new EntryStore(_directory);
+        var a = new MenuEntry { Text = "A" };
+        var menu = new MenuEntry { Kind = EntryKind.Submenu, Text = "Menu" };
+        var child = new MenuEntry { Text = "Child", ParentId = menu.Id };
+        var b = new MenuEntry { Text = "B" };
+        store.Entries.AddRange([a, menu, child, b]);
+
+        Assert.True(store.MoveTo(menu, null, a));
+        Assert.Equal(["Menu", "Child", "A", "B"], store.InDisplayOrder().Select(e => e.Text));
+
+        Assert.True(store.MoveTo(a, null, null));
+        Assert.Equal(["Menu", "Child", "B", "A"], store.InDisplayOrder().Select(e => e.Text));
+
+        Assert.False(store.MoveTo(b, null, a)); // Already right in front of A.
+    }
+
+    [Fact]
+    public void MoveTo_moves_commands_into_and_out_of_submenus()
+    {
+        var store = new EntryStore(_directory);
+        var menu = new MenuEntry { Kind = EntryKind.Submenu, Text = "Menu", Locations = MenuLocations.Folders };
+        var child = new MenuEntry { Text = "Child", ParentId = menu.Id, Locations = MenuLocations.Folders };
+        var a = new MenuEntry { Text = "A", Locations = MenuLocations.Files, Position = MenuPosition.Top, ShiftOnly = true };
+        var other = new MenuEntry { Kind = EntryKind.Submenu, Text = "Other" };
+        store.Entries.AddRange([menu, child, a, other]);
+
+        Assert.True(store.MoveTo(a, menu.Id, child));
+        Assert.Equal(["Menu", "A", "Child", "Other"], store.InDisplayOrder().Select(e => e.Text));
+        Assert.Equal(menu.Id, a.ParentId);
+        Assert.Equal(MenuLocations.Folders, a.Locations);
+        Assert.Equal(MenuPosition.Default, a.Position);
+        Assert.False(a.ShiftOnly);
+
+        Assert.True(store.MoveTo(child, null, null));
+        Assert.Null(child.ParentId);
+        Assert.Equal(["Menu", "A", "Other", "Child"], store.InDisplayOrder().Select(e => e.Text));
+
+        Assert.False(store.MoveTo(other, menu.Id, null)); // Submenus can't be nested.
+        Assert.False(store.MoveTo(child, menu.Id, other)); // "Other" isn't in that submenu.
+    }
+
     [Theory]
     [InlineData(".txt; .md", new[] { ".txt", ".md" })]
     [InlineData("TXT, *.Log", new[] { ".txt", ".log" })]
