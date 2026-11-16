@@ -67,6 +67,9 @@ internal sealed class PreviewItem
     public bool HasChildren => Children is not null;
 }
 
+/// <summary>The item to point out in the preview: one of the user's entries, or another program's item by key name.</summary>
+internal readonly record struct PreviewHighlight(MenuEntry? Entry, string? VerbKey);
+
 internal sealed class PreviewMenu
 {
     public List<PreviewItem> Items { get; } = [];
@@ -177,7 +180,7 @@ internal static class PreviewMenuBuilder
         bool shift,
         IReadOnlyList<MenuEntry> entries,
         IReadOnlyList<ExistingVerb> existing,
-        MenuEntry? highlight)
+        PreviewHighlight highlight)
     {
         var top = new List<PreviewItem>();
         var middle = new List<PreviewItem>();
@@ -188,11 +191,13 @@ internal static class PreviewMenuBuilder
 
         foreach (ExistingVerb verb in existing.Where(v => shift || !v.ShiftOnly))
         {
-            Place(verb.Position, WithSeparators(FromVerb(verb), verb.SeparatorBefore, verb.SeparatorAfter));
+            PreviewItem item = FromVerb(verb);
+            item.Highlight = string.Equals(verb.KeyName, highlight.VerbKey, StringComparison.OrdinalIgnoreCase);
+            Place(verb.Position, WithSeparators(item, verb.SeparatorBefore, verb.SeparatorAfter));
         }
 
         MenuLocations location = ToLocation(target);
-        Guid? forced = highlight is null ? null : highlight.ParentId ?? highlight.Id;
+        Guid? forced = highlight.Entry is null ? null : highlight.Entry.ParentId ?? highlight.Entry.Id;
 
         foreach (MenuEntry entry in entries.Where(e => !e.IsChild))
         {
@@ -206,7 +211,7 @@ internal static class PreviewMenuBuilder
                 continue;
             }
 
-            PreviewItem item = FromEntry(entry, entries, highlight);
+            PreviewItem item = FromEntry(entry, entries, highlight.Entry);
             Place(entry.Position, WithSeparators(item, entry.SeparatorBefore, entry.SeparatorAfter));
         }
 

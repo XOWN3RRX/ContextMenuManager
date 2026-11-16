@@ -46,6 +46,8 @@ internal static class Glyphs
     public const string Print = "";
     public const string Properties = "";
     public const string Library = "";
+    public const string Lock = "";
+    public const string Apps = "";
     public const string Mouse = "";
     public const string Keyboard = "";
     public const string Lightbulb = "";

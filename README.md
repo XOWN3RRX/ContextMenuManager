@@ -13,6 +13,7 @@ Free, open source and private: no ads, no tracking, no internet access, and no a
 - **Templates.** Add common entries in one click: Command Prompt, PowerShell, Windows Terminal, Git Bash, VS Code, Notepad, Copy path, Task Manager, Restart Explorer and a Power submenu. Templates for programs you don't have are greyed out.
 - **Your own entries.** Pick a program, its arguments (`{path}` is the item you clicked), an icon, and where the entry shows up: desktop and folder background, folders, files (all or only some file types) or drives.
 - **Submenus**, separator lines, top or bottom position, and "only when Shift is held".
+- **See what other programs added.** The list also shows, read only, the menu items other programs put there (for example Git, VS Code, VLC, 7-Zip or Microsoft Defender), with the program they come from. Select one to see where it is in the menu, or make an editable copy of it.
 - **Turn entries on and off** without deleting them.
 - **Import and export** your entries as a JSON file. Imported entries arrive turned off, so you can check them first.
 - **Full context menu on Windows 11** (optional): skip "Show more options" and always show every item.

@@ -25,7 +25,12 @@ internal sealed class MainForm : Form
     private readonly ToolTip _toolTip;
     private readonly ContextMenuStrip _entryMenu;
     private readonly ContextMenuStrip _moreMenu;
+    private readonly ContextMenuStrip _externalMenu;
+    private readonly Label _otherLabel;
+    private readonly ToggleSwitch _otherToggle;
     private readonly Dictionary<PreviewTarget, IReadOnlyList<ExistingVerb>> _existingVerbs = [];
+    private IReadOnlyList<ExternalItem> _externalItems = [];
+    private bool _externalLoading;
 
     private MenuEntry? _clickedEntry;
     private PreviewTarget _clickedTarget;
@@ -95,6 +100,24 @@ internal sealed class MainForm : Form
         _list.MouseDoubleClick += List_MouseDoubleClick;
         _list.KeyDown += List_KeyDown;
 
+        _otherLabel = new Label
+        {
+            Text = "Show items from other programs",
+            AutoSize = false,
+            TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = Theme.TextSecondary,
+            BackColor = Theme.Background,
+        };
+        _otherToggle = new ToggleSwitch { Checked = services.Settings.ShowOtherPrograms, BackColor = Theme.Background, AccessibleName = "Show items from other programs" };
+        _otherLabel.Click += (_, _) => _otherToggle.Checked = !_otherToggle.Checked;
+        _otherToggle.CheckedChanged += (_, _) =>
+        {
+            _services.Settings.ShowOtherPrograms = _otherToggle.Checked;
+            _services.Settings.Save();
+            RefreshList();
+        };
+        _toolTip.SetToolTip(_otherToggle, "List the menu items other programs added (read only)");
+
         _empty = new Label
         {
             Text = "No entries yet.\n\nStart with a template such as “Open Git Bash here”, or create your own entry.",
@@ -123,10 +146,11 @@ internal sealed class MainForm : Form
         _toolTip.SetToolTip(_newButton, "Create your own entry (Ctrl+N)");
 
         _entryMenu = BuildEntryMenu();
+        _externalMenu = BuildExternalMenu();
         _list.ContextMenuStrip = _entryMenu;
         _moreMenu = BuildMoreMenu();
 
-        Controls.AddRange([_preview, _title, _settingsButton, _moreButton, _search, _empty, _list, _status, _templatesButton, _newButton]);
+        Controls.AddRange([_preview, _title, _settingsButton, _moreButton, _search, _otherLabel, _otherToggle, _empty, _list, _status, _templatesButton, _newButton]);
         ResumeLayout(false);
     }
 
@@ -142,10 +166,8 @@ internal sealed class MainForm : Form
         _empty.Font = Theme.CreateCaptionFont(Font);
 
         RefreshList();
-        if (_list.Items.Count > 0)
-        {
-            _list.SelectedIndex = 0;
-        }
+        SelectFirstRow();
+        _ = LoadExternalItemsAsync();
 
         if (Store.LoadError is { } error)
         {
@@ -178,13 +200,15 @@ internal sealed class MainForm : Form
         _settingsButton.Bounds = new Rectangle(_moreButton.Left - S(4) - iconButton, pad, iconButton, iconButton);
 
         _search.Bounds = new Rectangle(sidebarX, _title.Bottom + S(10), sidebarWidth, S(34));
+        _otherToggle.Bounds = new Rectangle(sidebarX + sidebarWidth - S(48), _search.Bottom + S(10), S(40), S(20));
+        _otherLabel.Bounds = new Rectangle(sidebarX + S(4), _search.Bottom + S(4), _otherToggle.Left - sidebarX - S(8), S(32));
 
         int buttonWidth = (sidebarWidth - S(8)) / 2;
         _templatesButton.Bounds = new Rectangle(sidebarX, client.Height - pad - S(38), buttonWidth, S(38));
         _newButton.Bounds = new Rectangle(sidebarX + sidebarWidth - buttonWidth, _templatesButton.Top, buttonWidth, S(38));
         _status.Bounds = new Rectangle(sidebarX + S(4), _templatesButton.Top - S(8) - S(20), sidebarWidth - S(4), S(20));
 
-        int listTop = _search.Bottom + S(8);
+        int listTop = _otherLabel.Bottom + S(4);
         _list.Bounds = new Rectangle(sidebarX, listTop, sidebarWidth, Math.Max(0, _status.Top - S(6) - listTop));
         _empty.Bounds = Rectangle.Inflate(_list.Bounds, -S(16), 0);
     }
@@ -207,6 +231,7 @@ internal sealed class MainForm : Form
                 _existingVerbs.Clear();
                 IconLoader.Clear();
                 ShowSelectedInPreview();
+                _ = LoadExternalItemsAsync();
                 return true;
             default:
                 return base.ProcessCmdKey(ref msg, keyData);
@@ -228,13 +253,41 @@ internal sealed class MainForm : Form
 
     private void RefreshList(MenuEntry? select = null)
     {
-        Guid? selectedId = select?.Id ?? _list.SelectedEntry?.Id;
+        object? selected = select is not null ? select : _list.SelectedItem;
         string filter = _search.Text.Trim();
+        bool showOther = _otherToggle.Checked;
 
-        List<MenuEntry> items = [.. Store.InDisplayOrder()];
+        List<MenuEntry> entries = [.. Store.InDisplayOrder()];
         if (filter.Length > 0)
         {
-            items = [.. items.Where(e => Matches(e, filter) || e.IsChild && Store.Find(e.ParentId!.Value) is { } p && Matches(p, filter))];
+            entries = [.. entries.Where(e => Matches(e, filter) || e.IsChild && Store.Find(e.ParentId!.Value) is { } p && Matches(p, filter))];
+        }
+
+        var rows = new List<object>();
+        if (showOther)
+        {
+            rows.Add(new ListHeader("Your entries"));
+            if (entries.Count == 0)
+            {
+                rows.Add(new ListHeader(Store.Entries.Count == 0
+                    ? "No entries yet. Add one with Templates or New entry, or make an editable copy of an item below."
+                    : "No matching entries", IsHint: true));
+            }
+        }
+
+        rows.AddRange(entries);
+
+        if (showOther)
+        {
+            List<ExternalItem> external = [.. _externalItems.Where(i => filter.Length == 0 || Matches(i, filter))];
+            rows.Add(new ListHeader("From other programs (read only)"));
+            if (external.Count == 0)
+            {
+                rows.Add(new ListHeader(_externalLoading ? "Looking for items\u2026"
+                    : filter.Length > 0 ? "No matching items" : "No items from other programs were found", IsHint: true));
+            }
+
+            rows.AddRange(external);
         }
 
         _updatingList = true;
@@ -242,9 +295,8 @@ internal sealed class MainForm : Form
         {
             _list.BeginUpdate();
             _list.Items.Clear();
-            _list.Items.AddRange([.. items]);
-            int index = items.FindIndex(e => e.Id == selectedId);
-            _list.SelectedIndex = index;
+            _list.Items.AddRange([.. rows]);
+            _list.SelectedIndex = rows.FindIndex(r => SameRow(r, selected));
             _list.EndUpdate();
         }
         finally
@@ -252,7 +304,7 @@ internal sealed class MainForm : Form
             _updatingList = false;
         }
 
-        _empty.Visible = Store.Entries.Count == 0;
+        _empty.Visible = !showOther && Store.Entries.Count == 0;
         if (_empty.Visible)
         {
             _empty.BringToFront();
@@ -265,9 +317,63 @@ internal sealed class MainForm : Form
         }
     }
 
+    private static bool SameRow(object row, object? selected) => (row, selected) switch
+    {
+        (MenuEntry a, MenuEntry b) => a.Id == b.Id,
+        (ExternalItem a, ExternalItem b) => a.Id == b.Id,
+        _ => false,
+    };
+
+    private void SelectFirstRow()
+    {
+        int index = Enumerable.Range(0, _list.Items.Count).FirstOrDefault(i => _list.Items[i] is not ListHeader, -1);
+        if (index >= 0)
+        {
+            _list.SelectedIndex = index;
+        }
+    }
+
+    private async Task LoadExternalItemsAsync()
+    {
+        if (_externalLoading)
+        {
+            return;
+        }
+
+        _externalLoading = true;
+        RefreshList();
+        try
+        {
+            _externalItems = await Task.Run(ExternalMenuItems.ReadAll);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            _externalItems = [];
+        }
+        finally
+        {
+            _externalLoading = false;
+        }
+
+        if (!IsDisposed)
+        {
+            bool nothingSelected = _list.SelectedIndex < 0;
+            RefreshList();
+            if (nothingSelected)
+            {
+                SelectFirstRow();
+            }
+        }
+    }
+
     private static bool Matches(MenuEntry entry, string filter) =>
         entry.Text.Contains(filter, StringComparison.CurrentCultureIgnoreCase)
         || entry.Program.Contains(filter, StringComparison.CurrentCultureIgnoreCase);
+
+    private static bool Matches(ExternalItem item, string filter) =>
+        item.Text.Contains(filter, StringComparison.CurrentCultureIgnoreCase)
+        || item.Command.Contains(filter, StringComparison.CurrentCultureIgnoreCase)
+        || item.Publisher?.Contains(filter, StringComparison.CurrentCultureIgnoreCase) == true;
 
     private void UpdateStatus(string? message = null)
     {
@@ -286,6 +392,11 @@ internal sealed class MainForm : Form
             _ => $"{total} entries  ·  {active} in your menu",
         };
 
+        if (_otherToggle.Checked && _externalItems.Count > 0)
+        {
+            _status.Text += $"  ·  {_externalItems.Count} from other programs";
+        }
+
         if (_services.IsSandbox)
         {
             _status.Text += "  ·  sandbox";
@@ -299,6 +410,19 @@ internal sealed class MainForm : Form
         {
             MenuEntry? parent = entry.ParentId is { } id ? Store.Find(id) : null;
             _preview.Scene.ShowEntry(entry, parent);
+        }
+        else if (_list.SelectedExternal is { } external)
+        {
+            if (!_preview.Scene.ShowExternal(external))
+            {
+                _preview.Scene.Banner.Show(
+                    $"\u201C{external.Text}\u201D is a shell extension",
+                    "Shell extensions are small add-ons that decide at run time what they add to the menu, so the preview can't draw them. "
+                    + $"It shows on: {MenuEntry.DescribeLocations(external.Locations)}.",
+                    external.ModulePath,
+                    canRun: false);
+                _preview.Scene.ShowBanner();
+            }
         }
         else
         {
@@ -512,7 +636,7 @@ internal sealed class MainForm : Form
         _preview.Scene.Style = !windows11 ? MenuStyle.Classic10 : fullMenu ? MenuStyle.Classic11 : MenuStyle.Modern;
     }
 
-    private PreviewMenu BuildClassicMenu(PreviewTarget target, bool shift, MenuEntry? highlight, MenuStyle style)
+    private PreviewMenu BuildClassicMenu(PreviewTarget target, bool shift, PreviewHighlight highlight, MenuStyle style)
     {
         if (!_existingVerbs.TryGetValue(target, out IReadOnlyList<ExistingVerb>? existing))
         {
@@ -625,6 +749,11 @@ internal sealed class MainForm : Form
             if (_list.SelectedEntry is not { } entry)
             {
                 e.Cancel = true;
+                if (_list.SelectedExternal is not null)
+                {
+                    BeginInvoke(() => _externalMenu!.Show(Cursor.Position));
+                }
+
                 return;
             }
 
@@ -634,6 +763,98 @@ internal sealed class MainForm : Form
         };
 
         return menu;
+    }
+
+    private ContextMenuStrip BuildExternalMenu()
+    {
+        var menu = new ContextMenuStrip();
+        ThemedMenuRenderer.Apply(menu);
+
+        var details = new ToolStripMenuItem("Details...", null, (_, _) => SelectedExternal(ShowExternalDetails)) { ShortcutKeyDisplayString = "Enter" };
+        details.Font = new Font(details.Font, FontStyle.Bold);
+        var copyEntry = new ToolStripMenuItem("Make an editable copy", null, (_, _) => SelectedExternal(CopyExternal));
+        var copyCommand = new ToolStripMenuItem("Copy command", null, (_, _) => SelectedExternal(i => Clipboard.SetText(i.Command)));
+        var copyPath = new ToolStripMenuItem("Copy registry location", null, (_, _) => SelectedExternal(i => Clipboard.SetText(RegistryLocations(i))));
+
+        menu.Items.AddRange([details, new ToolStripSeparator(), copyEntry, copyCommand, copyPath]);
+        menu.Opening += (_, e) =>
+        {
+            if (_list.SelectedExternal is not { } item)
+            {
+                e.Cancel = true;
+                return;
+            }
+
+            copyEntry.Enabled = item.CanCopy;
+            copyCommand.Enabled = item.Command.Length > 0;
+        };
+
+        return menu;
+    }
+
+    private void SelectedExternal(Action<ExternalItem> action)
+    {
+        if (_list.SelectedExternal is { } item)
+        {
+            action(item);
+        }
+    }
+
+    private static string RegistryLocations(ExternalItem item) =>
+        string.Join(Environment.NewLine, item.RegistryPaths.Select(p => @"HKEY_CLASSES_ROOT\" + p));
+
+    private void ShowExternalDetails(ExternalItem item)
+    {
+        string kind = item.Kind switch
+        {
+            ExternalItemKind.ShellExtension => "Shell extension (the program decides its text and items)",
+            ExternalItemKind.Submenu => "Submenu",
+            _ => "Menu item",
+        };
+
+        string text = $"Type: {kind}\nShows on: {MenuEntry.DescribeLocations(item.Locations)}"
+            + (item.ShiftOnly ? " (only with Shift)" : string.Empty)
+            + (item.Publisher is null ? string.Empty : $"\nFrom: {item.Publisher}")
+            + (item.Command.Length > 0 ? $"\nRuns: {item.Command}" : string.Empty)
+            + (item.ModulePath is null ? string.Empty : $"\nFile: {item.ModulePath}")
+            + $"\n\nRegistry:\n{RegistryLocations(item)}"
+            + "\n\nContext Menu Manager doesn't change items from other programs. To change or remove this one, use the program that added it (or its settings).";
+
+        var copy = new TaskDialogButton("Make an editable copy") { Enabled = item.CanCopy };
+        var page = new TaskDialogPage
+        {
+            Caption = "Context Menu Manager",
+            Heading = item.Text,
+            Text = text,
+            Icon = TaskDialogIcon.Information,
+            Buttons = { copy, TaskDialogButton.Close },
+            DefaultButton = TaskDialogButton.Close,
+        };
+
+        if (TaskDialog.ShowDialog(this, page) == copy)
+        {
+            CopyExternal(item);
+        }
+    }
+
+    /// <summary>Adds the item to the user's list as a new entry (turned off, so it doesn't show twice) and opens the editor.</summary>
+    private void CopyExternal(ExternalItem item)
+    {
+        IReadOnlyList<MenuEntry> entries = item.ToEditableEntries();
+        if (entries.Count == 0)
+        {
+            return;
+        }
+
+        entries[0].Text += " (my copy)";
+        foreach (MenuEntry entry in entries)
+        {
+            Insert(entry);
+        }
+
+        Commit(entries[0]);
+        UpdateStatus($"Added an editable copy of \u201C{item.Text}\u201D (turned off)");
+        EditEntry(entries[0]);
     }
 
     private ContextMenuStrip BuildMoreMenu()
@@ -835,15 +1056,30 @@ internal sealed class MainForm : Form
     private void List_MouseDoubleClick(object? sender, MouseEventArgs e)
     {
         int index = _list.IndexFromPoint(e.Location);
-        if (e.Button == MouseButtons.Left && index >= 0 && _list.Items[index] is MenuEntry entry
-            && e.X < _list.Width - S(64))
+        if (e.Button != MouseButtons.Left || index < 0 || !_list.GetItemRectangle(index).Contains(e.Location))
+        {
+            return;
+        }
+
+        if (_list.Items[index] is MenuEntry entry && e.X < _list.Width - S(64))
         {
             EditEntry(entry);
+        }
+        else if (_list.Items[index] is ExternalItem external)
+        {
+            ShowExternalDetails(external);
         }
     }
 
     private void List_KeyDown(object? sender, KeyEventArgs e)
     {
+        if (_list.SelectedExternal is { } external && e.KeyData == Keys.Enter)
+        {
+            ShowExternalDetails(external);
+            e.Handled = e.SuppressKeyPress = true;
+            return;
+        }
+
         if (_list.SelectedEntry is not { } entry)
         {
             return;
@@ -897,6 +1133,7 @@ internal sealed class MainForm : Form
             _toolTip.Dispose();
             _entryMenu.Dispose();
             _moreMenu.Dispose();
+            _externalMenu.Dispose();
         }
 
         base.Dispose(disposing);

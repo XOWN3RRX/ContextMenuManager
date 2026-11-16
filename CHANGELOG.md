@@ -13,6 +13,7 @@ All notable changes are listed here. The format is based on [Keep a Changelog](h
 - Submenus, separator lines, top/bottom position and Shift-only entries.
 - Live preview: a pretend desktop with Windows 11 (compact and full) and Windows 10 menus, other programs' items, and click-to-see what each entry runs, with an optional test run.
 - Templates: Command Prompt, PowerShell, PowerShell 7, Windows Terminal, Git Bash, VS Code, Notepad++, Notepad, Copy path, Task Manager, Control Panel, Restart Explorer and a Power submenu.
+- Read-only list of the context menu items other programs added (static items and shell extensions), with preview highlighting, details and "make an editable copy".
 - Import and export as JSON (imported entries start turned off).
 - Optional full context menu on Windows 11, and Restart Explorer.
 - Remove everything the app added with one click.

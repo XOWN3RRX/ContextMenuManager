@@ -14,7 +14,8 @@ public sealed record ExistingVerb(
     bool ShiftOnly,
     bool SeparatorBefore,
     bool SeparatorAfter,
-    IReadOnlyList<ExistingVerb>? Children);
+    IReadOnlyList<ExistingVerb>? Children,
+    string SourcePath = "");
 
 /// <summary>
 /// Reads the static menu items other programs added (for example "Open Git Bash here"),
@@ -74,7 +75,7 @@ public static class ShellVerbReader
                     }
 
                     using RegistryKey? key = shell.OpenSubKey(name);
-                    if (key is not null && ReadVerb(name, key, depth: 0) is { } verb)
+                    if (key is not null && ReadVerb(name, key, depth: 0, path + "\\" + name) is { } verb)
                     {
                         result.Add(verb);
                     }
@@ -89,7 +90,7 @@ public static class ShellVerbReader
         return result;
     }
 
-    private static ExistingVerb? ReadVerb(string name, RegistryKey key, int depth)
+    private static ExistingVerb? ReadVerb(string name, RegistryKey key, int depth, string sourcePath)
     {
         // Skip items that are hidden, only for programs, or our own (the app draws those itself).
         if (key.GetValue("LegacyDisable") is not null
@@ -118,7 +119,7 @@ public static class ShellVerbReader
                 foreach (string childName in subShell?.GetSubKeyNames() ?? [])
                 {
                     using RegistryKey? child = subShell!.OpenSubKey(childName);
-                    if (child is not null && ReadVerb(childName, child, depth + 1) is { } verb)
+                    if (child is not null && ReadVerb(childName, child, depth + 1, sourcePath + @"\shell\" + childName) is { } verb)
                     {
                         list.Add(verb);
                     }
@@ -139,7 +140,8 @@ public static class ShellVerbReader
             key.GetValue("Extended") is not null,
             key.GetValue("SeparatorBefore") is not null,
             key.GetValue("SeparatorAfter") is not null,
-            children);
+            children,
+            sourcePath);
     }
 
     /// <summary>Turns "@shell32.dll,-8506" style resource strings into text and removes the "&amp;" access key marker.</summary>

@@ -17,6 +17,9 @@ internal sealed class AppSettings
 
     public PreviewStyleSetting PreviewStyle { get; set; } = PreviewStyleSetting.MatchWindows;
 
+    /// <summary>Lists the menu items other programs added (read only) below the user's entries.</summary>
+    public bool ShowOtherPrograms { get; set; } = true;
+
     public static AppSettings Load(string dataDirectory)
     {
         string path = Path.Combine(dataDirectory, "settings.json");

@@ -5,6 +5,21 @@
 - **Left: Live preview.** A pretend desktop with a folder (*Documents*), a file (*Notes.txt*) and a drive (*Local Disk (C:)*). Right-click any of them, or the empty desktop, to open the menu. Use **Windows 11 / Windows 10** to switch the menu style and **Hold Shift** to see entries that only show while Shift is held (holding the real Shift key while you right-click works too).
 - **Right: Menu entries.** Your entries in menu order. Selecting one opens the preview menu where it appears, with the entry outlined. The switch on each row turns it on (in your real menu) or off (kept in the app only).
 
+## Items from other programs
+
+With **Show items from other programs** turned on (below the search box), the list has a second, read-only section: the context menu items other programs added, such as *Open Git Bash here*, *Open with Visual Studio*, VLC, 7-Zip or *Scan with Microsoft Defender*. Each row shows where the item appears and which program it comes from.
+
+- Select one to see it outlined in the preview.
+- Double-click it (or press Enter) for details: what it runs and where it is registered.
+- Right-click it to **Make an editable copy** (it becomes one of your entries, turned off, and opens in the editor), **Copy command** or **Copy registry location**.
+
+There are two kinds:
+
+- **Menu items and submenus** are simple registry entries. The preview can draw them exactly.
+- **Extensions** are add-ons (shell extensions) that decide at run time what they add, like 7-Zip's submenu. The list shows them, but the preview can't draw them, and they can't be copied.
+
+The app never changes or removes these items. To change one, use the program that added it (many have a setting for their menu items) or uninstall that program.
+
 ## Adding an entry from a template
 
 1. Click **Templates** (or press **Ctrl+T**).

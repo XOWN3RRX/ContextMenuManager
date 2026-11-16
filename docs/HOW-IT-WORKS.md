@@ -83,6 +83,15 @@ HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer3
 
 Explorer must restart before it takes effect. Turning the setting off deletes that key again.
 
+## Items from other programs
+
+The **From other programs** section of the list is read from `HKEY_CLASSES_ROOT` (read only) for the same four places:
+
+- **Static items**: the `shell` keys (`Directory\Background\shell`, `DesktopBackground\shell`, `Directory\shell`, `Folder\shell`, `*\shell`, `AllFilesystemObjects\shell`, `Drive\shell`). Windows' own verbs (open, print, runas...) and hidden ones (`LegacyDisable`, `ProgrammaticAccessOnly`, feature-flagged) are skipped.
+- **Shell extensions**: the `shellex\ContextMenuHandlers` keys. The handler's CLSID is looked up to find its DLL. Handlers whose DLL is in the Windows folder (Windows' own), that have no 64-bit DLL (Explorer can't load them), or that were disabled by renaming with a leading `-` are skipped.
+
+The program name shown next to an item comes from the version information of its program or DLL. Reading happens in the background when the app starts (and again with F5).
+
 ## The live preview
 
 The preview is drawn by the app; it is not the real Explorer menu.

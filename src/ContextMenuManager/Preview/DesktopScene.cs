@@ -52,6 +52,7 @@ internal sealed class DesktopScene : Control
     private Font? _glyphFont;
     private Font? _smallGlyphFont;
     private Font? _captionFont;
+    private Bitmap? _wallpaper;
 
     public DesktopScene()
     {
@@ -67,7 +68,7 @@ internal sealed class DesktopScene : Control
 
     /// <summary>Builds the full menu: (target, shift held, entry to point out) → menu.</summary>
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-    public Func<PreviewTarget, bool, MenuEntry?, MenuStyle, PreviewMenu>? ClassicMenuProvider { get; set; }
+    public Func<PreviewTarget, bool, PreviewHighlight, MenuStyle, PreviewMenu>? ClassicMenuProvider { get; set; }
 
     /// <summary>Shows what a click did.</summary>
     public ResultBanner Banner { get; }
@@ -83,6 +84,7 @@ internal sealed class DesktopScene : Control
         set
         {
             _style = value;
+            DropWallpaper();
             CloseMenus();
         }
     }
@@ -106,8 +108,29 @@ internal sealed class DesktopScene : Control
     public void ShowEntry(MenuEntry entry, MenuEntry? parent)
     {
         MenuEntry placement = parent ?? entry;
-        PreviewTarget target = PreviewMenuBuilder.FromLocation(placement.Locations);
-        bool shift = placement.ShiftOnly || ForceShift;
+        ShowHighlighted(placement.Locations, placement.ShiftOnly, new PreviewHighlight(entry, null), parent?.Id, "your entries are");
+    }
+
+    /// <summary>
+    /// Opens the full menu where another program's item appears and points it out.
+    /// Returns false for shell extensions, whose text only the program itself knows.
+    /// </summary>
+    public bool ShowExternal(ExternalItem item)
+    {
+        if (item.Kind == ExternalItemKind.ShellExtension)
+        {
+            CloseMenus();
+            return false;
+        }
+
+        ShowHighlighted(item.Locations, item.ShiftOnly, new PreviewHighlight(null, item.KeyName), null, "these items are");
+        return true;
+    }
+
+    private void ShowHighlighted(MenuLocations locations, bool shiftOnly, PreviewHighlight highlight, Guid? openSubmenu, string whatIsWhere)
+    {
+        PreviewTarget target = PreviewMenuBuilder.FromLocation(locations);
+        bool shift = shiftOnly || ForceShift;
 
         int iconIndex = Array.FindIndex(s_icons, i => i.Target == target);
         _selectedIcon = iconIndex;
@@ -116,20 +139,20 @@ internal sealed class DesktopScene : Control
             : new Point(Math.Min(Width / 3, S(320)), S(40));
 
         MenuStyle style = _style == MenuStyle.Modern ? MenuStyle.Classic11 : _style;
-        OpenRoot(target, anchor, shift, entry, style);
+        OpenRoot(target, anchor, shift, highlight, style);
 
         if (_style == MenuStyle.Modern)
         {
-            _notice = "On Windows 11 your entries are under “Show more options”";
+            _notice = $"On Windows 11 {whatIsWhere} under “Show more options”";
         }
         else if (shift && !ForceShift)
         {
-            _notice = "This entry only shows while Shift is held";
+            _notice = "This item only shows while Shift is held";
         }
 
-        if (parent is not null && _menus.Count > 0)
+        if (openSubmenu is not null && _menus.Count > 0)
         {
-            int index = _menus[0].Menu.Items.FindIndex(i => i.Entry?.Id == parent.Id);
+            int index = _menus[0].Menu.Items.FindIndex(i => i.Entry?.Id == openSubmenu);
             if (index >= 0)
             {
                 _menus[0].Hover = index;
@@ -153,6 +176,7 @@ internal sealed class DesktopScene : Control
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
+        DropWallpaper();
         CloseMenus();
         LayoutIcons();
         LayoutBanner();
@@ -304,8 +328,9 @@ internal sealed class DesktopScene : Control
             int icon = _menus.Count == 0 ? HitTestIcon(e.Location) : -1;
             if (icon != _hoverIcon)
             {
+                InvalidateIcon(_hoverIcon);
                 _hoverIcon = icon;
-                Invalidate();
+                InvalidateIcon(_hoverIcon);
             }
 
             return;
@@ -316,6 +341,9 @@ internal sealed class DesktopScene : Control
         {
             return;
         }
+
+        // Only repaint where menus are (before and after), not the whole desktop: no flicker, less work.
+        Rectangle dirty = MenusArea();
 
         menu.Hover = item;
         menu.ToolbarHover = toolbar;
@@ -332,7 +360,26 @@ internal sealed class DesktopScene : Control
             CloseDeeperThan(menuIndex);
         }
 
-        Invalidate();
+        dirty = Rectangle.Union(dirty, MenusArea());
+        dirty.Inflate(S(10), S(10));
+        Invalidate(dirty);
+    }
+
+    private Rectangle MenusArea() =>
+        _menus.Count == 0 ? Rectangle.Empty : _menus.Select(m => m.Bounds).Aggregate(Rectangle.Union);
+
+    private void InvalidateIcon(int index)
+    {
+        if (index >= 0 && index < _iconRects.Length)
+        {
+            Invalidate(Rectangle.Inflate(_iconRects[index], 2, 2));
+        }
+    }
+
+    private void DropWallpaper()
+    {
+        _wallpaper?.Dispose();
+        _wallpaper = null;
     }
 
     protected override void OnMouseLeave(EventArgs e)
@@ -363,13 +410,13 @@ internal sealed class DesktopScene : Control
         }
         else
         {
-            OpenRoot(target, anchor, shift, null, _style == MenuStyle.Modern ? MenuStyle.Classic11 : _style);
+            OpenRoot(target, anchor, shift, default, _style == MenuStyle.Modern ? MenuStyle.Classic11 : _style);
         }
 
         Invalidate();
     }
 
-    private void OpenRoot(PreviewTarget target, Point anchor, bool shift, MenuEntry? highlight, MenuStyle style)
+    private void OpenRoot(PreviewTarget target, Point anchor, bool shift, PreviewHighlight highlight, MenuStyle style)
     {
         _menus.Clear();
         _notice = null;
@@ -395,7 +442,7 @@ internal sealed class DesktopScene : Control
 
         if (item.Source == PreviewItemSource.ShowMoreOptions)
         {
-            OpenRoot(_target, _anchor, _shift, null, MenuStyle.Classic11);
+            OpenRoot(_target, _anchor, _shift, default, MenuStyle.Classic11);
             _notice = "This is the full menu. Your entries live here";
             Invalidate();
             return;
@@ -579,13 +626,29 @@ internal sealed class DesktopScene : Control
         }
     }
 
+    /// <summary>Draws the wallpaper from a cached bitmap; the gradients are only rendered when the size or style changes.</summary>
     private void PaintWallpaper(Graphics g)
     {
-        var bounds = ClientRectangle;
-        if (bounds.Width <= 0 || bounds.Height <= 0)
+        if (Width <= 0 || Height <= 0)
         {
             return;
         }
+
+        if (_wallpaper is null || _wallpaper.Size != ClientSize)
+        {
+            DropWallpaper();
+            _wallpaper = new Bitmap(ClientSize.Width, ClientSize.Height);
+            using Graphics bitmapGraphics = Graphics.FromImage(_wallpaper);
+            bitmapGraphics.SmoothingMode = SmoothingMode.AntiAlias;
+            RenderWallpaper(bitmapGraphics);
+        }
+
+        g.DrawImageUnscaled(_wallpaper, 0, 0);
+    }
+
+    private void RenderWallpaper(Graphics g)
+    {
+        var bounds = ClientRectangle;
 
         Color baseColor = Theme.IsDark ? Color.FromArgb(0x10, 0x16, 0x2A) : Color.FromArgb(0xC9, 0xDC, 0xF2);
         Color accent = Theme.Accent;
@@ -865,6 +928,7 @@ internal sealed class DesktopScene : Control
             _glyphFont?.Dispose();
             _smallGlyphFont?.Dispose();
             _captionFont?.Dispose();
+            DropWallpaper();
         }
 
         base.Dispose(disposing);
