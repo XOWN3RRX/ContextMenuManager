@@ -36,4 +36,4 @@ Releases are built by GitHub Actions from the tagged source code. Each release l
 certutil -hashfile ContextMenuManager-win-x64.zip SHA256
 ```
 
-The executable is not code-signed, so Windows SmartScreen may show a warning the first time you run it. You can always build the app yourself from source instead.
+Code signing through SignPath Foundation has been requested (see the [code signing policy](docs/CODE-SIGNING.md)). Until then the executable is not signed, so Windows SmartScreen may show a warning the first time you run it. You can always build the app yourself from source instead.

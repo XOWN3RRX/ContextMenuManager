@@ -64,7 +64,12 @@ Or open `ContextMenuManager.slnx` in Visual Studio 2026. To try changes without 
 - [How it works](docs/HOW-IT-WORKS.md): the registry keys the app writes and why it is safe
 - [Contributing](CONTRIBUTING.md): build, test, project structure and pull requests
 - [Security](SECURITY.md) and [Privacy](PRIVACY.md)
+- [Code signing policy](docs/CODE-SIGNING.md)
 - [Changelog](CHANGELOG.md)
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org). Signing has been requested but isn't active yet. See the [code signing policy](docs/CODE-SIGNING.md) for who can approve a release and how to check a signature.
 
 ## License
 

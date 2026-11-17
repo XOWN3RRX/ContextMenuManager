@@ -13,6 +13,10 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      # Releases (v* tags) are signed through SignPath Foundation once the repository variable
+      # SIGNPATH_ORGANIZATION_ID and the secret SIGNPATH_API_TOKEN are set. See docs/CODE-SIGNING.md.
+      SIGN: ${{ startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,6 +36,60 @@ jobs:
           foreach ($rid in 'win-x64', 'win-arm64') {
             dotnet publish src/ContextMenuManager/ContextMenuManager.csproj -c Release -r $rid --self-contained false `
               -p:PublishSingleFile=true -p:DebugType=none -o "publish/$rid"
+          }
+
+      - name: Check release version
+        id: version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME.Substring(1)
+          foreach ($rid in 'win-x64', 'win-arm64') {
+            $version = (Get-Item "publish/$rid/ContextMenuManager.exe").VersionInfo.ProductVersion
+            if ($version -ne $tag) { throw "$rid build has product version '$version', but the tag is v$tag. Update <Version> in the csproj." }
+          }
+          "version=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: Upload unsigned program
+        id: upload-unsigned
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned
+          path: publish/*/ContextMenuManager.exe
+          if-no-files-found: error
+
+      - name: Sign with SignPath
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'ContextMenuManager' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+          parameters: |
+            version: ${{ toJSON(steps.version.outputs.version) }}
+          wait-for-completion: true
+          # Each release is approved by hand in SignPath, so allow time for that.
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signed
+
+      - name: Use signed program
+        if: env.SIGN == 'true'
+        shell: pwsh
+        run: |
+          foreach ($rid in 'win-x64', 'win-arm64') {
+            $signature = Get-AuthenticodeSignature "signed/$rid/ContextMenuManager.exe"
+            if ($signature.Status -ne 'Valid') { throw "$rid signature is $($signature.Status): $($signature.StatusMessage)" }
+            Copy-Item "signed/$rid/ContextMenuManager.exe" "publish/$rid/ContextMenuManager.exe" -Force
+            "$rid signed by $($signature.SignerCertificate.Subject)"
+          }
+
+      - name: Package
+        shell: pwsh
+        run: |
+          foreach ($rid in 'win-x64', 'win-arm64') {
             Copy-Item LICENSE, README.md "publish/$rid/"
             Compress-Archive -Path "publish/$rid/*" -DestinationPath "ContextMenuManager-$rid.zip" -Force
           }
@@ -60,5 +118,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          notes="Check downloads against \`SHA256SUMS.txt\`. See the [code signing policy](https://github.com/$GITHUB_REPOSITORY/blob/main/docs/CODE-SIGNING.md)."
           gh release create "$GITHUB_REF_NAME" ContextMenuManager-*.zip SHA256SUMS.txt \
-            --repo "$GITHUB_REPOSITORY" --draft --generate-notes --title "Context Menu Manager $GITHUB_REF_NAME"
+            --repo "$GITHUB_REPOSITORY" --draft --generate-notes --notes "$notes" --title "Context Menu Manager $GITHUB_REF_NAME"

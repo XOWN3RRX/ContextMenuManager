@@ -84,4 +84,14 @@ Please follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 1. Update the `<Version>` in `src/ContextMenuManager/ContextMenuManager.csproj` and the changelog.
 2. Tag the commit: `git tag v1.0.0` and push the tag.
-3. The *Build* workflow runs the tests, publishes `win-x64` and `win-arm64` builds and attaches them to a draft GitHub release. Review the draft and publish it.
+3. The *Build* workflow runs the tests, checks that the program's version matches the tag, publishes `win-x64` and `win-arm64` builds and attaches them to a draft GitHub release. Review the draft and publish it.
+
+### Code signing
+
+Once SignPath Foundation approves the project, tagged releases are signed automatically (see the [code signing policy](docs/CODE-SIGNING.md)):
+
+1. In SignPath, create the project with the slug `ContextMenuManager`, link it to this GitHub repository, and paste [`.signpath/artifact-configuration.xml`](.signpath/artifact-configuration.xml) as its artifact configuration.
+2. In GitHub, under **Settings → Secrets and variables → Actions**, add the secret `SIGNPATH_API_TOKEN` and the variable `SIGNPATH_ORGANIZATION_ID`. If SignPath uses different slugs, also set `SIGNPATH_PROJECT_SLUG` and `SIGNPATH_SIGNING_POLICY_SLUG` (defaults are `ContextMenuManager` and `release-signing`).
+3. When a tag is pushed, the workflow waits up to an hour for you to approve the signing request in SignPath, then zips the signed files.
+
+Without the `SIGNPATH_ORGANIZATION_ID` variable, releases are built unsigned, as before.

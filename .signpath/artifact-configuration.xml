@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration for Context Menu Manager.
+  This is a copy of the configuration set in the SignPath project, kept here so it can be reviewed.
+  The Build workflow uploads publish/*/ContextMenuManager.exe, which GitHub zips as:
+    win-x64/ContextMenuManager.exe
+    win-arm64/ContextMenuManager.exe
+  "version" is the release tag without the leading "v" (for example 1.0.0); it must match <Version> in the csproj.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <directory path="win-x64">
+      <pe-file path="ContextMenuManager.exe" product-name="Context Menu Manager" product-version="${version}">
+        <authenticode-sign />
+      </pe-file>
+    </directory>
+    <directory path="win-arm64">
+      <pe-file path="ContextMenuManager.exe" product-name="Context Menu Manager" product-version="${version}">
+        <authenticode-sign />
+      </pe-file>
+    </directory>
+  </zip-file>
+</artifact-configuration>
