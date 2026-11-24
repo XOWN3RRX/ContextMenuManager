@@ -24,10 +24,13 @@ public sealed class EntryTemplate
     public bool IsAvailable => ProgramCandidates.Count == 0 || FindProgram() is not null;
 }
 
-/// <summary>The built-in templates. Every command here only uses programs that ship with Windows or that the user installed.</summary>
+/// <summary>The built-in templates. Every command here only uses this app, programs that ship with Windows, or programs the user installed.</summary>
 public static class Templates
 {
     private const MenuLocations FolderPlaces = MenuLocations.Background | MenuLocations.Folders | MenuLocations.Drives;
+
+    /// <summary>Makes the app copy the path that follows to the clipboard and exit, without opening a window.</summary>
+    public const string CopyPathSwitch = "--copy-path";
 
     public static IReadOnlyList<EntryTemplate> All { get; } =
     [
@@ -56,11 +59,25 @@ public static class Templates
         Simple("Open with Notepad", "Opens the file you right-clicked in Notepad.", "Files",
             @"%SystemRoot%\System32\notepad.exe", "\"{path}\"", MenuLocations.Files),
 
-        Simple("Copy path", "Copies the full path of the item you right-clicked to the clipboard.", "Files",
-            @"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe",
-            "-NoProfile -WindowStyle Hidden -Command Set-Clipboard -Value '{path}'",
-            MenuLocations.Background | MenuLocations.Folders | MenuLocations.Files | MenuLocations.Drives,
-            icon: @"%SystemRoot%\System32\imageres.dll,-5302"),
+        // Runs this app with --copy-path instead of PowerShell: no console window flashes up and it
+        // finishes in a fraction of the time PowerShell needs to start.
+        new()
+        {
+            Name = "Copy path",
+            Description = "Copies the full path of the item you right-clicked to the clipboard.",
+            Category = "Files",
+            Create = _ =>
+            [
+                new MenuEntry
+                {
+                    Text = "Copy path",
+                    Program = Environment.ProcessPath ?? string.Empty,
+                    Arguments = CopyPathSwitch + " \"{path}\"",
+                    Locations = MenuLocations.Background | MenuLocations.Folders | MenuLocations.Files | MenuLocations.Drives,
+                    Icon = @"%SystemRoot%\System32\imageres.dll,-5302",
+                },
+            ],
+        },
 
         Simple("Task Manager", "Opens Task Manager.", "System",
             @"%SystemRoot%\System32\Taskmgr.exe", string.Empty, MenuLocations.Background),

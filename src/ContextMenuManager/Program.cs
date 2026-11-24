@@ -17,6 +17,13 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        // "Copy path" menu entry: copy and exit before anything else loads, so it feels instant.
+        if (args.Length > 0 && string.Equals(args[0], Templates.CopyPathSwitch, StringComparison.OrdinalIgnoreCase))
+        {
+            CopyPathToClipboard();
+            return;
+        }
+
         // --sandbox: try everything without touching the real context menu (see CONTRIBUTING.md).
         bool sandbox = args.Any(a => string.Equals(a, "--sandbox", StringComparison.OrdinalIgnoreCase));
         string suffix = sandbox ? ".Sandbox" : string.Empty;
@@ -62,6 +69,28 @@ internal static class Program
         }, null, Timeout.Infinite, executeOnlyOnce: false);
 
         Application.Run(mainForm);
+    }
+
+    private static void CopyPathToClipboard()
+    {
+        // Read the raw command line: in args, a quoted drive root ("C:\") comes out as C:" because
+        // a backslash before a quote escapes it. Paths can't contain quotes, so trimming them is safe.
+        string commandLine = Environment.CommandLine;
+        int start = commandLine.IndexOf(Templates.CopyPathSwitch, StringComparison.OrdinalIgnoreCase);
+        string path = commandLine[(start + Templates.CopyPathSwitch.Length)..].Trim().Trim('"');
+        if (path.Length == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(path);
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            // Another program kept the clipboard locked; nothing useful to show from a menu click.
+        }
     }
 
     private static Icon LoadAppIcon()
