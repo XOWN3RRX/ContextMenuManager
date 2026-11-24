@@ -4,6 +4,8 @@ All notable changes are listed here. The format is based on [Keep a Changelog](h
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-24
+
 ### Fixed
 
 - The *Copy path* template no longer flashes a PowerShell window and copies right away. It now runs the app itself in the background. Remove and re-add an existing *Copy path* entry to get the faster version.
